@@ -1,103 +1,317 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    contact: "",
+    date: "",
+    type: ""
+  });
+  const [formErrors, setFormErrors] = useState({
+    name: false,
+    contact: false,
+    date: false,
+    type: false
+  });
+  
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({
+      ...formData,
+      [name]: value
+    });
+    
+    // Clear error when user types
+    if (formErrors[name]) {
+      setFormErrors({
+        ...formErrors,
+        [name]: false
+      });
+    }
+  };
+  
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    
+    // Validate form
+    const errors = {
+      name: !formData.name,
+      contact: !formData.contact,
+      date: !formData.date,
+      type: !formData.type
+    };
+    
+    setFormErrors(errors);
+    
+    // If no errors, submit form
+    if (!Object.values(errors).some(Boolean)) {
+      console.log(formData);
+      setFormSubmitted(true);
+      
+      // Reset form
+      setFormData({
+        name: "",
+        contact: "",
+        date: "",
+        type: ""
+      });
+      
+      setTimeout(() => setFormSubmitted(false), 3000);
+    }
+  };
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  return (
+    <main>
+      {/* Navigation */}
+      <nav className="bg-white shadow py-4 sticky top-0 z-50">
+        <div className="container mx-auto px-4 flex justify-between items-center">
+          <a href="#" className="text-xl font-bold text-primary">СапСерф</a>
+          
+          <div className="hidden md:flex space-x-6">
+            <a href="#about" className="hover:text-primary">О нас</a>
+            <a href="#tours" className="hover:text-primary">Маршруты</a>
+            <a href="#booking" className="hover:text-primary">Бронирование</a>
+            <a href="#contact" className="hover:text-primary">Контакты</a>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero */}
+      <section className="relative h-[70vh] flex items-center">
+        <div className="absolute inset-0">
+          <Image 
+            src="/hero-bg.jpg" 
+            alt="Сап-серфинг в Калининграде" 
+            fill 
+            priority
+            style={{ objectFit: 'cover' }}
+          />
+          <div className="absolute inset-0 bg-black/40"></div>
+        </div>
+        
+        <div className="container mx-auto px-4 relative z-10 text-white text-center">
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">
+            Сап-прогулки и серфинг в Калининграде
+          </h1>
+          <p className="text-xl mb-6">
+            Откройте для себя красоту Балтийского моря
+          </p>
+          <a 
+            href="#booking" 
+            className="btn-primary"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
+            Записаться на прогулку
           </a>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+      </section>
+
+      {/* About Us */}
+      <section id="about" className="py-16 bg-light-blue">
+        <div className="container mx-auto px-4">
+          <h2 className="text-3xl font-bold text-center mb-8">О нас</h2>
+          
+          <div className="flex flex-col md:flex-row gap-8">
+            <div className="md:w-1/2">
+              <p className="mb-4">
+                Мы команда опытных инструкторов по SUP и серфингу, которые уже более 5 лет 
+                организуют морские прогулки в Калининграде и окрестных курортах.
+              </p>
+              <p>
+                Наша миссия — показать вам уникальную красоту Балтийского побережья 
+                и научить наслаждаться водными видами спорта.
+              </p>
+            </div>
+            <div className="md:w-1/2">
+              <div className="relative h-64 rounded-lg overflow-hidden">
+                <Image
+                  src="/team.jpg"
+                  alt="Наша команда"
+                  fill
+                  style={{ objectFit: 'cover' }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Tours */}
+      <section id="tours" className="py-16">
+        <div className="container mx-auto px-4">
+          <h2 className="text-3xl font-bold text-center mb-8">Наши маршруты</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Tour 1 */}
+            <div className="bg-white shadow rounded-lg overflow-hidden">
+              <div className="relative h-48">
+                <Image
+                  src="/tour-1.jpg"
+                  alt="Вдоль побережья"
+                  fill
+                  style={{ objectFit: 'cover' }}
+                />
+              </div>
+              <div className="p-4">
+                <h3 className="text-xl font-bold mb-2">Вдоль побережья</h3>
+                <p className="text-sm mb-2">Пляж Светлогорска</p>
+                <p className="text-sm mb-2">2 часа</p>
+                <p className="text-sm mb-4">1500 ₽ / человек</p>
+                <a href="#booking" className="btn-primary block text-center">Выбрать</a>
+              </div>
+            </div>
+            
+            {/* Tour 2 */}
+            <div className="bg-white shadow rounded-lg overflow-hidden">
+              <div className="relative h-48">
+                <Image
+                  src="/tour-2.jpg"
+                  alt="Вокруг острова"
+                  fill
+                  style={{ objectFit: 'cover' }}
+                />
+              </div>
+              <div className="p-4">
+                <h3 className="text-xl font-bold mb-2">Вокруг острова</h3>
+                <p className="text-sm mb-2">Остров Канта</p>
+                <p className="text-sm mb-2">3 часа</p>
+                <p className="text-sm mb-4">2000 ₽ / человек</p>
+                <a href="#booking" className="btn-primary block text-center">Выбрать</a>
+              </div>
+            </div>
+            
+            {/* Tour 3 */}
+            <div className="bg-white shadow rounded-lg overflow-hidden">
+              <div className="relative h-48">
+                <Image
+                  src="/tour-3.jpg"
+                  alt="Серфинг для начинающих"
+                  fill
+                  style={{ objectFit: 'cover' }}
+                />
+              </div>
+              <div className="p-4">
+                <h3 className="text-xl font-bold mb-2">Серфинг для начинающих</h3>
+                <p className="text-sm mb-2">Зеленоградск</p>
+                <p className="text-sm mb-2">4 часа</p>
+                <p className="text-sm mb-4">3000 ₽ / человек</p>
+                <a href="#booking" className="btn-primary block text-center">Выбрать</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Booking */}
+      <section id="booking" className="py-16 bg-light-blue">
+        <div className="container mx-auto px-4 max-w-md">
+          <h2 className="text-3xl font-bold text-center mb-8">Забронировать прогулку</h2>
+          
+          {formSubmitted ? (
+            <div className="bg-green-100 border border-green-400 text-green-700 p-4 rounded text-center">
+              <p>Спасибо за заявку! Мы свяжемся с вами в ближайшее время.</p>
+            </div>
+          ) : (
+            <form 
+              onSubmit={handleSubmit}
+              className="bg-white rounded-lg shadow p-6"
+            >
+              <div className="mb-4">
+                <label className="block mb-1">Ваше имя</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2 border rounded ${formErrors.name ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {formErrors.name && <span className="text-red-500 text-sm">Обязательное поле</span>}
+              </div>
+              
+              <div className="mb-4">
+                <label className="block mb-1">Телефон или Telegram</label>
+                <input
+                  type="text"
+                  name="contact"
+                  value={formData.contact}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2 border rounded ${formErrors.contact ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {formErrors.contact && <span className="text-red-500 text-sm">Обязательное поле</span>}
+              </div>
+              
+              <div className="mb-4">
+                <label className="block mb-1">Дата</label>
+                <input
+                  type="date"
+                  name="date"
+                  value={formData.date}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2 border rounded ${formErrors.date ? 'border-red-500' : 'border-gray-300'}`}
+                />
+                {formErrors.date && <span className="text-red-500 text-sm">Обязательное поле</span>}
+              </div>
+              
+              <div className="mb-6">
+                <label className="block mb-1">Тип активности</label>
+                <select
+                  name="type"
+                  value={formData.type}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2 border rounded ${formErrors.type ? 'border-red-500' : 'border-gray-300'}`}
+                >
+                  <option value="">Выберите тип...</option>
+                  <option value="sup">SUP-прогулка</option>
+                  <option value="surfing">Серфинг</option>
+                </select>
+                {formErrors.type && <span className="text-red-500 text-sm">Выберите тип активности</span>}
+              </div>
+              
+              <button 
+                type="submit"
+                className="btn-primary w-full"
+              >
+                Отправить заявку
+              </button>
+            </form>
+          )}
+        </div>
+      </section>
+
+      {/* Contact */}
+      <section id="contact" className="py-16 bg-light-blue">
+        <div className="container mx-auto px-4 text-center">
+          <h2 className="text-3xl font-bold mb-8">Контакты</h2>
+          
+          <div className="flex flex-col md:flex-row justify-center gap-8">
+            <div>
+              <h3 className="font-bold mb-2">Телефон</h3>
+              <p>+7 (123) 456-78-90</p>
+            </div>
+            <div>
+              <h3 className="font-bold mb-2">Email</h3>
+              <p>info@sapsurf.ru</p>
+            </div>
+            <div>
+              <h3 className="font-bold mb-2">Социальные сети</h3>
+              <div className="flex justify-center gap-4">
+                <a href="#" className="text-primary">Instagram</a>
+                <a href="#" className="text-primary">Telegram</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-primary text-white py-4 text-center">
+        <div className="container mx-auto px-4">
+          <p>© {new Date().getFullYear()} СапСерф Калининград. Все права защищены.</p>
+        </div>
       </footer>
-    </div>
+    </main>
   );
 }
