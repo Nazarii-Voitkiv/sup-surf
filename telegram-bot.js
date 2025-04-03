@@ -4,7 +4,6 @@ require('dotenv').config();
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const API_URL = process.env.API_URL || 'http://localhost:3000/api/bookings';
-const adminUsername = process.env.TELEGRAM_USERNAME;
 const adminChatId = process.env.ADMIN_CHAT_ID;
 
 const bot = new TelegramBot(token, { polling: true });

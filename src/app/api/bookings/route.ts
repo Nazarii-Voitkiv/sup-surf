@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   try {
     const data: FormData = await request.json();
     
-    if (!data.name || !data.date || !data.type) {
+    if (!data.name || !data.date || !data.type || !data.phone) {
       return NextResponse.json({ success: false, message: 'Не заполнены обязательные поля' }, { status: 400 });
     }
     
@@ -89,7 +89,7 @@ export async function PUT(request: Request) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           chat_id: adminChatId, 
-          text: `✅ Подтвержденная заявка!\n\n👤 Имя: ${booking.name}\n📅 Дата: ${formattedDate}\n🏄‍♂️ Тип: ${activityType}\n📱 Telegram: ${userTag}` 
+          text: `✅ Подтвержденная заявка!\n\n👤 Имя: ${booking.name}\n📞 Телефон: ${booking.phone}\n📅 Дата: ${formattedDate}\n🏄‍♂️ Тип: ${activityType}\n📱 Telegram: ${userTag}` 
         })
       });
     }

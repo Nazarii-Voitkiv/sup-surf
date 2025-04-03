@@ -16,12 +16,14 @@ export default function Home() {
   const [confirmationLink, setConfirmationLink] = useState('');
   const [formData, setFormData] = useState<FormData>({
     name: "",
+    phone: "",
     date: "",
     type: ""
   });
   
   const [formErrors, setFormErrors] = useState<FormErrors>({
     name: false,
+    phone: false,
     date: false,
     type: false
   });
@@ -50,6 +52,7 @@ export default function Home() {
     
     const errors = {
       name: !formData.name,
+      phone: !formData.phone,
       date: !formData.date,
       type: !formData.type
     };
@@ -83,6 +86,7 @@ export default function Home() {
         
         setFormData({
           name: "",
+          phone: "",
           date: "",
           type: ""
         });
@@ -108,6 +112,16 @@ export default function Home() {
         label="Ваше имя"
         placeholder="Иван Иванов"
         error={formErrors.name}
+      />
+      
+      <FormInput
+        type="text"
+        name="phone"
+        value={formData.phone}
+        onChange={handleInputChange}
+        label="Номер телефона"
+        placeholder="+7 (XXX) XXX-XX-XX"
+        error={formErrors.phone}
       />
       
       <FormInput
