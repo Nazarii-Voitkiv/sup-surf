@@ -3,7 +3,7 @@ export interface FormData {
   contact: string;
   date: string;
   type: string;
-}
+  }
 
 export type FormErrors = Record<keyof FormData, boolean>;
 

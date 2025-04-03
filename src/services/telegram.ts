@@ -1,3 +1,46 @@
+import { FormData } from "../types";
+
+const TELEGRAM_BOT_TOKEN = process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID;
+const API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+
+export async function sendTelegramNotification(data: FormData): Promise<boolean> {
+  try {
+    const formattedDate = new Date(data.date).toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+    
+    const activityType = data.type === 'sup' ? 'SUP-прогулку' : 'Серфинг';
+    
+    const message = `🔔 Новая заявка!\n\n👤 Имя: ${data.name}\n📞 Контакт: ${data.contact}\n📅 Дата: ${formattedDate}\n🏄‍♂️ Тип: ${activityType}`;
+    
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text: message,
+        parse_mode: 'HTML'
+      })
+    });
+    
+    const result = await response.json();
+    return result.ok;
+  } catch (error) {
+    console.error('Failed to send Telegram notification:', error);
+    return false;
+  }
+}
+```
+
+### /Users/nazarii/IdeaProjects/sup-surf/src/app/page.tsx
+
+````tsx
+// filepath: /Users/nazarii/IdeaProjects/sup-surf/src/app/page.tsx
 "use client";
 
 import { useState, ChangeEvent, FormEvent } from "react";
@@ -8,11 +51,13 @@ import { FormInput } from "../components/FormInput";
 import { SectionHeader } from "../components/SectionHeader";
 import { CheckIcon, MenuIcon } from "../components/Icons";
 import { useScrollPosition } from "../hooks/useScrollPosition";
+import { sendTelegramNotification } from "../services/telegram";
 import { tours } from "../data/tours";
 import { FormData, FormErrors } from "../types";
 
 export default function Home() {
   const [formSubmitted, setFormSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     name: "",
     contact: "",
@@ -27,7 +72,6 @@ export default function Home() {
     type: false
   });
   
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const isScrolled = useScrollPosition();
   
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -62,21 +106,9 @@ export default function Home() {
       setIsSubmitting(true);
       
       try {
-        const response = await fetch('/api/notifications', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(formData)
-        });
-        
-        const result = await response.json();
-        
-        if (!result.success) {
-          throw new Error(result.message || 'Failed to send notification');
-        }
-        
+        await sendTelegramNotification(formData);
         setFormSubmitted(true);
+        
         setFormData({
           name: "",
           contact: "",
@@ -395,3 +427,7 @@ export default function Home() {
     </main>
   );
 }
+````
+
+### /Users/nazarii/IdeaProjects/sup-surf/src/app/.env.local (Create this file)
+
