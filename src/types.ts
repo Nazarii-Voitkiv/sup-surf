@@ -1,11 +1,13 @@
 export interface FormData {
   name: string;
-  contact: string;
   date: string;
   type: string;
-  }
+  contact?: string;
+  confirmationId?: string;
+  telegramUsername?: string;
+}
 
-export type FormErrors = Record<keyof FormData, boolean>;
+export type FormErrors = Record<keyof Omit<FormData, 'confirmationId' | 'contact' | 'telegramUsername'>, boolean>;
 
 export interface TourData {
   id: string;

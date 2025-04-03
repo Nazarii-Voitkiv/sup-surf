@@ -2,7 +2,6 @@
 
 import { useState, ChangeEvent, FormEvent } from "react";
 import Image from "next/image";
-
 import { TourCard } from "../components/TourCard";
 import { FormInput } from "../components/FormInput";
 import { SectionHeader } from "../components/SectionHeader";
@@ -10,19 +9,19 @@ import { CheckIcon, MenuIcon } from "../components/Icons";
 import { useScrollPosition } from "../hooks/useScrollPosition";
 import { tours } from "../data/tours";
 import { FormData, FormErrors } from "../types";
+import { generateConfirmationId } from "../utils/bookingUtils";
 
 export default function Home() {
-  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [bookingState, setBookingState] = useState<'form' | 'confirm'>('form');
+  const [confirmationLink, setConfirmationLink] = useState('');
   const [formData, setFormData] = useState<FormData>({
     name: "",
-    contact: "",
     date: "",
     type: ""
   });
   
   const [formErrors, setFormErrors] = useState<FormErrors>({
     name: false,
-    contact: false,
     date: false,
     type: false
   });
@@ -51,7 +50,6 @@ export default function Home() {
     
     const errors = {
       name: !formData.name,
-      contact: !formData.contact,
       date: !formData.date,
       type: !formData.type
     };
@@ -62,36 +60,134 @@ export default function Home() {
       setIsSubmitting(true);
       
       try {
-        const response = await fetch('/api/notifications', {
+        const confirmId = generateConfirmationId();
+        const dataWithConfirmation = {
+          ...formData,
+          confirmationId: confirmId
+        };
+        
+        const response = await fetch('/api/bookings', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(formData)
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dataWithConfirmation)
         });
         
         const result = await response.json();
         
         if (!result.success) {
-          throw new Error(result.message || 'Failed to send notification');
+          throw new Error(result.message || 'Failed to create booking');
         }
         
-        setFormSubmitted(true);
+        setConfirmationLink(result.confirmationLink);
+        setBookingState('confirm');
+        
         setFormData({
           name: "",
-          contact: "",
           date: "",
           type: ""
         });
-        
-        setTimeout(() => setFormSubmitted(false), 3000);
       } catch (error) {
         console.error("Failed to process booking:", error);
+        alert("Произошла ошибка при отправке заявки. Пожалуйста, попробуйте позже.");
       } finally {
         setIsSubmitting(false);
       }
     }
   };
+
+  const renderBookingForm = () => (
+    <form 
+      onSubmit={handleSubmit}
+      className="bg-white rounded-lg shadow-xl p-8"
+    >
+      <FormInput
+        type="text"
+        name="name"
+        value={formData.name}
+        onChange={handleInputChange}
+        label="Ваше имя"
+        placeholder="Иван Иванов"
+        error={formErrors.name}
+      />
+      
+      <FormInput
+        type="date"
+        name="date"
+        value={formData.date}
+        onChange={handleInputChange}
+        label="Дата прогулки"
+        error={formErrors.date}
+      />
+      
+      <FormInput
+        type="select"
+        name="type"
+        value={formData.type}
+        onChange={handleInputChange}
+        label="Тип активности"
+        error={formErrors.type}
+        errorMessage="Выберите тип активности"
+        options={[
+          { value: '', label: 'Выберите тип...' },
+          { value: 'sup', label: 'SUP-прогулка' },
+          { value: 'surfing', label: 'Серфинг' }
+        ]}
+      />
+      
+      <button 
+        type="submit"
+        disabled={isSubmitting}
+        className="btn-primary w-full text-lg py-3 relative"
+      >
+        {isSubmitting ? (
+          <span className="inline-flex items-center">
+            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Отправка...
+          </span>
+        ) : (
+          'Отправить заявку'
+        )}
+      </button>
+    </form>
+  );
+
+  const renderConfirmationStep = () => (
+    <div className="bg-white p-8 rounded-lg shadow-xl text-center">
+      <div className="mb-6">
+        <CheckIcon className="h-16 w-16 text-primary mx-auto mb-4" />
+        <h3 className="text-2xl font-bold mb-3">Остался последний шаг!</h3>
+        <p className="text-lg text-gray-700 mb-6">
+          Чтобы завершить бронирование, пожалуйста, подтвердите заявку в нашем Telegram боте.
+        </p>
+      </div>
+      
+      <a 
+        href={confirmationLink}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="btn-primary inline-flex items-center justify-center mb-6 px-6 py-3"
+      >
+        <svg className="w-5 h-5 mr-2" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm.14 19.018c-.798 0-1.612-.13-2.432-.404a9.044 9.044 0 01-2.1-.923 7.88 7.88 0 01-1.57-1.184 7.88 7.88 0 01-1.184-1.57 9.044 9.044 0 01-.923-2.1c-.274-.82-.404-1.634-.404-2.431 0-.798.13-1.612.404-2.432a9.044 9.044 0 01.923-2.1 7.88 7.88 0 011.184-1.57 7.88 7.88 0 011.57-1.184 9.044 9.044 0 012.1-.923c.82-.274 1.634-.404 2.432-.404.798 0 1.612.13 2.432.404a9.044 9.044 0 012.1.923c.576.365 1.104.795 1.57 1.184s.82.994 1.184 1.57c.478.646.733 1.325.923 2.1.274.82.404 1.634.404 2.432 0 .798-.13 1.613-.404 2.432a9.044 9.044 0 01-.923 2.099 7.88 7.88 0 01-1.184 1.57 7.88 7.88 0 01-1.57 1.184 9.044 9.044 0 01-2.1.923c-.82.274-1.634.404-2.432.404zM9.85 8.262L7.17 9.195c-.086.042-.086.13 0 .172l6.317 2.383c.043.022.108 0 .13-.043l2.426-6.316c.022-.086-.022-.173-.13-.151l-6.062 2.383c-.022 0-.022.022-.022.022L9.85 8.262z"/>
+        </svg>
+        Подтвердить в Telegram
+      </a>
+      
+      <p className="text-sm text-gray-500 mb-6">
+        После подтверждения вы получите уведомление в Telegram
+      </p>
+      
+      <button 
+        onClick={() => setBookingState('form')}
+        className="text-primary hover:underline"
+      >
+        Вернуться к форме
+      </button>
+    </div>
+  );
 
   return (
     <main className="overflow-hidden">
@@ -249,80 +345,7 @@ export default function Home() {
             </div>
             
             <div className="md:w-1/2 w-full max-w-md mx-auto md:max-w-none">
-              {formSubmitted ? (
-                <div className="bg-green-50 border border-green-200 text-green-800 p-8 rounded-lg text-center shadow-lg">
-                  <CheckIcon className="h-16 w-16 text-green-500 mx-auto mb-4" />
-                  <h3 className="text-2xl font-bold mb-2">Спасибо за заявку!</h3>
-                  <p className="text-lg">Мы свяжемся с вами в ближайшее время для подтверждения деталей.</p>
-                </div>
-              ) : (
-                <form 
-                  onSubmit={handleSubmit}
-                  className="bg-white rounded-lg shadow-xl p-8"
-                >
-                  <FormInput
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    label="Ваше имя"
-                    placeholder="Иван Иванов"
-                    error={formErrors.name}
-                  />
-                  
-                  <FormInput
-                    type="text"
-                    name="contact"
-                    value={formData.contact}
-                    onChange={handleInputChange}
-                    label="Телефон или Telegram"
-                    placeholder="+7 (XXX) XXX-XX-XX или @username"
-                    error={formErrors.contact}
-                  />
-                  
-                  <FormInput
-                    type="date"
-                    name="date"
-                    value={formData.date}
-                    onChange={handleInputChange}
-                    label="Дата прогулки"
-                    error={formErrors.date}
-                  />
-                  
-                  <FormInput
-                    type="select"
-                    name="type"
-                    value={formData.type}
-                    onChange={handleInputChange}
-                    label="Тип активности"
-                    error={formErrors.type}
-                    errorMessage="Выберите тип активности"
-                    options={[
-                      { value: '', label: 'Выберите тип...' },
-                      { value: 'sup', label: 'SUP-прогулка' },
-                      { value: 'surfing', label: 'Серфинг' }
-                    ]}
-                  />
-                  
-                  <button 
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="btn-primary w-full text-lg py-3 relative"
-                  >
-                    {isSubmitting ? (
-                      <span className="inline-flex items-center">
-                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Отправка...
-                      </span>
-                    ) : (
-                      'Отправить заявку'
-                    )}
-                  </button>
-                </form>
-              )}
+              {bookingState === 'form' ? renderBookingForm() : renderConfirmationStep()}
             </div>
           </div>
         </div>

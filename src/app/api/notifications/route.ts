@@ -11,19 +11,19 @@ export async function POST(request: Request) {
     
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const username = process.env.TELEGRAM_USERNAME;
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME;
     
-    if (!token || !username) {
+    if (!token || !username || !botUsername) {
       return NextResponse.json({ success: false, message: 'Server configuration error' }, { status: 500 });
     }
     
     const formattedDate = new Date(data.date).toLocaleDateString('ru-RU', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
+      day: 'numeric', month: 'long', year: 'numeric'
     });
     
     const activityType = data.type === 'sup' ? 'SUP-прогулку' : 'Серфинг';
-    const message = `🔔 Новая заявка!\n\n👤 Имя: ${data.name}\n📞 Контакт: ${data.contact}\n📅 Дата: ${formattedDate}\n🏄‍♂️ Тип: ${activityType}`;
+    const confirmationLink = `https://t.me/${botUsername}?start=${data.confirmationId}`;
+    const message = `🔔 Новая заявка!\n\n👤 Имя: ${data.name}\n📞 Контакт: ${data.contact}\n📅 Дата: ${formattedDate}\n🏄‍♂️ Тип: ${activityType}\n\n🔗 ID: ${data.confirmationId}`;
     
     const chatResponse = await fetch(`https://api.telegram.org/bot${token}/getUpdates`);
     const updates = await chatResponse.json();
@@ -40,9 +40,7 @@ export async function POST(request: Request) {
           });
           
           const result = await response.json();
-          if (result.ok) {
-            return NextResponse.json({ success: true });
-          }
+          if (result.ok) return NextResponse.json({ success: true, confirmationLink });
         }
       }
     }
