@@ -123,6 +123,30 @@ body {
   transform: scale(1.1);
 }
 
+/* Create a subtle section divider */
+.section-divider {
+  height: 6px;
+  background: linear-gradient(90deg, transparent, var(--primary) 50%, transparent);
+  opacity: 0.15;
+  margin: 2rem 0;
+  width: 100%;
+  max-width: 300px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Adjust Tours section to have a more distinct background */
+#tours {
+  position: relative;
+  background: linear-gradient(135deg, var(--light-blue), #f0f9ff);
+}
+
+/* Adjust Contact section to have a more distinct background */
+#contact {
+  position: relative;
+  background: linear-gradient(135deg, #f0f9ff, var(--light-blue));
+}
+
 @media (min-width: 768px) {
   .section-padding {
     padding: 6rem 2rem;
