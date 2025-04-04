@@ -10,6 +10,7 @@ import { useScrollPosition } from "../hooks/useScrollPosition";
 import { tours } from "../data/tours";
 import { FormData, FormErrors } from "../types";
 import { generateConfirmationId } from "../utils/bookingUtils";
+import { getMinDate, getMaxDate, PATTERNS, validateForm, formatPhone, normalizePhone } from "../utils/validation";
 
 export default function Home() {
   const [bookingState, setBookingState] = useState<'form' | 'confirm'>('form');
@@ -38,10 +39,20 @@ export default function Home() {
   
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    let processedValue = value;
+    
+    if (name === 'name') {
+      processedValue = value.replace(/[^А-Яа-яЁёA-Za-z\s-]/g, '');
+    } else if (name === 'phone') {
+      processedValue = value.replace(/[^0-9+]/g, '');
+      if (processedValue !== '' && !processedValue.startsWith('+') && processedValue[0] !== '8') {
+        processedValue = '+7' + processedValue;
+      }
+    }
     
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: processedValue
     }));
     
     if (formErrors[name as keyof FormErrors]) {
@@ -104,25 +115,24 @@ export default function Home() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     
-    const errors = {
-      name: !formData.name,
-      phone: !formData.phone,
-      date: !formData.date,
-      time: !formData.time,  // Added time validation
-      type: !formData.type
-    };
+    const validation = validateForm(formData);
+    setFormErrors(validation.errors);
     
-    setFormErrors(errors);
-    
-    if (!Object.values(errors).some(Boolean)) {
+    if (validation.isValid) {
       setIsSubmitting(true);
       
       try {
+        // Нормализация телефона перед отправкой на сервер
+        const formDataToSend = {
+          ...formData,
+          phone: normalizePhone(formData.phone)
+        };
+        
         resetConfirmationState();
         
         const confirmId = generateConfirmationId();
         const dataWithConfirmation = {
-          ...formData,
+          ...formDataToSend,
           confirmationId: confirmId
         };
         
@@ -183,17 +193,25 @@ export default function Home() {
         label="Ваше имя"
         placeholder="Иван Иванов"
         error={formErrors.name}
+        errorMessage="Введите корректное имя (только буквы)"
+        pattern={PATTERNS.NAME}
+        minLength={2}
+        maxLength={50}
       />
       
       <FormInput
-        type="text"
+        type="tel"
         name="phone"
         value={formData.phone}
         onChange={handleInputChange}
         label="Номер телефона"
-        placeholder="+7 (XXX) XXX-XX-XX"
+        placeholder="+7"
         error={formErrors.phone}
+        errorMessage="Введите корректный номер телефона (только цифры и + вначале)"
       />
+      <p className="text-gray-500 text-sm -mt-3 mb-5">
+        Формат: +79991234567 или 89991234567
+      </p>
       
       <FormInput
         type="date"
@@ -202,6 +220,9 @@ export default function Home() {
         onChange={handleInputChange}
         label="Дата прогулки"
         error={formErrors.date}
+        errorMessage="Выберите дату (не ранее сегодняшней)"
+        min={getMinDate()}
+        max={getMaxDate()}
       />
       
       <FormInput
@@ -211,6 +232,9 @@ export default function Home() {
         onChange={handleInputChange}
         label="Время прогулки"
         error={formErrors.time}
+        errorMessage="Выберите время (с 9:00 до 18:00)"
+        min="09:00"
+        max="18:00"
       />
       
       <FormInput
@@ -285,9 +309,11 @@ export default function Home() {
           ${timeRemaining === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
         onClick={(e) => timeRemaining === 0 && e.preventDefault()}
       >
-        <svg className="w-5 h-5 mr-2" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-          <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm.14 19.018c-.798 0-1.612-.13-2.432-.404a9.044 9.044 0 01-2.1-.923 7.88 7.88 0 01-1.57-1.184 7.88 7.88 0 01-1.184-1.57 9.044 9.044 0 01-.923-2.1c-.274-.82-.404-1.634-.404-2.431 0-.798.13-1.612.404-2.432a9.044 9.044 0 01.923-2.1 7.88 7.88 0 011.184-1.57 7.88 7.88 0 011.57-1.184 9.044 9.044 0 012.1-.923c.82-.274 1.634-.404 2.432-.404.798 0 1.612.13 2.432.404a9.044 9.044 0 012.1.923c.576.365 1.104.795 1.57 1.184s.82.994 1.184 1.57c.478.646.733 1.325.923 2.1.274.82.404 1.634.404 2.432 0 .798-.13 1.613-.404 2.432a9.044 9.044 0 01-.923 2.099 7.88 7.88 0 01-1.184 1.57 7.88 7.88 0 01-1.57 1.184 9.044 9.044 0 01-2.1.923c-.82.274-1.634.404-2.432.404zM9.85 8.262L7.17 9.195c-.086.042-.086.13 0 .172l6.317 2.383c.043.022.108 0 .13-.043l2.426-6.316c.022-.086-.022-.173-.13-.151l-6.062 2.383c-.022 0-.022.022-.022.022L9.85 8.262z"/>
-        </svg>
+        <img 
+          src="/tg.PNG" 
+          alt="Telegram" 
+          className="w-5 h-5 mr-2" 
+        />
         Подтвердить в Telegram
       </a>
       

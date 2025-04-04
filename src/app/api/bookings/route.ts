@@ -5,6 +5,8 @@ import { errorResponse, successResponse, sendTelegramNotification } from '@/util
 import { formatDateTime, getActivityTypeText } from '@/utils/formatters';
 
 const CONFIRMATION_TIMEOUT_MINUTES = parseInt(process.env.CONFIRMATION_TIMEOUT_MINUTES || '3', 10);
+const PHONE_REGEX = /^(\+7|8)[0-9]{10}$/;
+const NAME_REGEX = /^[А-Яа-яЁёA-Za-z\s-]{2,50}$/;
 
 export async function POST(request: Request) {
   try {
@@ -12,6 +14,38 @@ export async function POST(request: Request) {
     
     if (!data.name || !data.date || !data.time || !data.type || !data.phone) {
       return errorResponse('Не заполнены обязательные поля', 400);
+    }
+    
+    if (!/^[А-Яа-яЁёA-Za-z\s-]{2,50}$/.test(data.name)) {
+      return errorResponse('Некорректное имя', 400);
+    }
+    
+    const cleanedPhone = data.phone.replace(/[^0-9+]/g, '');
+    if (cleanedPhone.length < 10 || cleanedPhone.length > 12) {
+      return errorResponse('Некорректный номер телефона', 400);
+    }
+    
+    let normalizedPhone = cleanedPhone;
+    if (normalizedPhone.startsWith('8') && normalizedPhone.length === 11) {
+      normalizedPhone = `+7${normalizedPhone.substring(1)}`;
+    } else if (!normalizedPhone.startsWith('+')) {
+      normalizedPhone = `+${normalizedPhone}`;
+    }
+    
+    const bookingDate = new Date(data.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (bookingDate < today) {
+      return errorResponse('Дата не может быть в прошлом', 400);
+    }
+    
+    const [hours, minutes] = data.time.split(':').map(Number);
+    if (hours < 9 || hours > 18 || (hours === 18 && minutes > 0)) {
+      return errorResponse('Время должно быть с 9:00 до 18:00', 400);
+    }
+    
+    if (!['sup', 'surfing'].includes(data.type)) {
+      return errorResponse('Некорректный тип активности', 400);
     }
     
     const botUsername = process.env.TELEGRAM_BOT_USERNAME;
@@ -27,7 +61,7 @@ export async function POST(request: Request) {
       .from('bookings')
       .insert({
         name: data.name,
-        phone: data.phone,
+        phone: normalizedPhone,
         date: new Date(data.date).toISOString().split('T')[0],
         time: data.time,
         type: data.type,

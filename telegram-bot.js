@@ -2,7 +2,6 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 require('dotenv').config();
 
-// Загрузка параметров из .env
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const API_URL = process.env.API_URL || 'http://localhost:3000/api/bookings';
 const adminChatId = process.env.ADMIN_CHAT_ID;
@@ -31,12 +30,12 @@ async function sendMessage(chatId, message, options = {}) {
 }
 
 function getErrorMessage(error) {
-  if (error.response?.data?.message === 'Время подтверждения истекло') {
+  if (error.response?.data?.message === 'Время подтверждения истекло') 
     return "К сожалению, время подтверждения истекло (3 минуты). Пожалуйста, заполните форму заново.";
-  }
-  if (error.response?.data?.message === 'Эта заявка уже подтверждена') {
+  
+  if (error.response?.data?.message === 'Эта заявка уже подтверждена')
     return "Эта заявка уже была подтверждена ранее. Нет необходимости подтверждать её повторно.";
-  }
+  
   return "Произошла ошибка при подтверждении. Пожалуйста, попробуйте снова.";
 }
 
@@ -47,25 +46,25 @@ function formatDate(date) {
 }
 
 function formatDateTime(date, time) {
-  const formattedDate = formatDate(date);
-  return time ? `${formattedDate}, ${time}` : formattedDate;
+  return time ? `${formatDate(date)}, ${time}` : formatDate(date);
 }
 
 function getActivityName(type) {
   return type === 'sup' ? 'SUP-прогулка' : 'Серфинг';
 }
 
-// Улучшенное форматирование списка бронирований для пользователей
-function createBookingsListMessage(bookings) {
-  if (!bookings || bookings.length === 0) return null;
-  
-  // Сортируем бронирования по дате (ближайшие первыми)
-  const sortedBookings = [...bookings].sort((a, b) => {
+function sortBookingsByDate(bookings) {
+  return [...bookings].sort((a, b) => {
     const dateA = new Date(`${a.date}T${a.time || '00:00'}`);
     const dateB = new Date(`${b.date}T${b.time || '00:00'}`);
     return dateA - dateB;
   });
+}
+
+function createBookingsListMessage(bookings) {
+  if (!bookings || bookings.length === 0) return null;
   
+  const sortedBookings = sortBookingsByDate(bookings);
   const bookingsList = sortedBookings.map((booking, i) => {
     const dateText = formatDateTime(booking.date, booking.time);
     const typeText = getActivityName(booking.type);
@@ -75,17 +74,10 @@ function createBookingsListMessage(bookings) {
   return `🗓 Ваши бронирования:\n\n${bookingsList}`;
 }
 
-// Улучшенное форматирование списка бронирований для админа
 function createAdminBookingsListMessage(bookings) {
   if (!bookings || bookings.length === 0) return null;
   
-  // Сортируем бронирования по дате (ближайшие первыми)
-  const sortedBookings = [...bookings].sort((a, b) => {
-    const dateA = new Date(`${a.date}T${a.time || '00:00'}`);
-    const dateB = new Date(`${b.date}T${b.time || '00:00'}`);
-    return dateA - dateB;
-  });
-  
+  const sortedBookings = sortBookingsByDate(bookings);
   const bookingsList = sortedBookings.map((booking, i) => {
     const dateText = formatDateTime(booking.date, booking.time);
     const typeText = getActivityName(booking.type);
@@ -97,6 +89,159 @@ function createAdminBookingsListMessage(bookings) {
   
   return `📋 Список бронирований:\n\n${bookingsList}`;
 }
+
+async function handleBookingDetails(chatId, bookingId, messageId) {
+  try {
+    const response = await axios.get(`${BASE_URL}/api/user/bookings/details?bookingId=${bookingId}&chatId=${chatId}`);
+    
+    if (response.data.success) {
+      const booking = response.data.booking;
+      const dateText = formatDateTime(booking.date, booking.time);
+      const typeText = getActivityName(booking.type);
+      
+      const detailsMessage = `📋 *Детали бронирования*\n\n` +
+                         `📅 Дата и время: ${dateText}\n` +
+                         `🏄‍♂️ Тип: ${typeText}\n` +
+                         `👤 Имя: ${booking.name}\n` + 
+                         `📞 Телефон: ${booking.phone}\n`;
+      
+      const inlineKeyboard = [
+        [{text: "❌ Отменить бронирование", callback_data: `cancel_${booking.id}`}],
+        [{text: "◀️ Назад к списку", callback_data: `back_to_list`}]
+      ];
+      
+      await bot.editMessageText(detailsMessage, {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: inlineKeyboard }
+      });
+    } else {
+      await bot.answerCallbackQuery(query.id, {
+        text: "Не удалось получить детали бронирования",
+        show_alert: true
+      });
+    }
+  } catch (error) {
+    console.error('Error getting booking details:', error);
+    await sendMessage(chatId, "Произошла ошибка при получении деталей бронирования.");
+  }
+}
+
+async function handleBookingCancellation(chatId, bookingId, messageId, queryId = null) {
+  try {
+    const confirmMessage = "Вы уверены, что хотите отменить бронирование?";
+    const confirmKeyboard = [
+      [{text: "✅ Да, отменить", callback_data: `confirm_cancel_${bookingId}`}],
+      [{text: "❌ Нет, оставить", callback_data: `back_to_list`}]
+    ];
+    
+    await bot.editMessageText(confirmMessage, {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: { inline_keyboard: confirmKeyboard }
+    });
+    
+    if (queryId) await bot.answerCallbackQuery(queryId);
+  } catch (error) {
+    console.error('Error preparing cancellation:', error);
+    if (queryId) {
+      await bot.answerCallbackQuery(queryId, {
+        text: "Произошла ошибка при подготовке отмены",
+        show_alert: true
+      });
+    }
+  }
+}
+
+async function showUserBookings(chatId) {
+  try {
+    const response = await axios.get(`${BASE_URL}/api/user/bookings?chatId=${chatId}`);
+    
+    if (response.data.success) {
+      if (!response.data.bookings || response.data.bookings.length === 0) {
+        await sendMessage(chatId, "У вас пока нет бронирований.");
+        return;
+      }
+      
+      const bookings = response.data.bookings;
+      const inlineKeyboard = bookings.map((booking, index) => ([
+        {text: `📅 Подробнее #${index + 1}`, callback_data: `details_${booking.id}`},
+        {text: `❌ Отменить #${index + 1}`, callback_data: `cancel_${booking.id}`}
+      ]));
+      
+      const message = createBookingsListMessage(bookings);
+      await sendMessage(chatId, message, {
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: inlineKeyboard }
+      });
+    } else {
+      await sendMessage(chatId, "Не удалось получить ваши бронирования. Пожалуйста, попробуйте позже.");
+    }
+  } catch (error) {
+    console.error('Error getting user bookings:', error);
+    await sendMessage(chatId, "Произошла ошибка при получении бронирований. Пожалуйста, попробуйте позже.");
+  }
+}
+
+async function fetchAndDisplayAdminBookings(chatId, period, titleText) {
+  try {
+    const endpoint = period 
+      ? `${BASE_URL}/api/admin/bookings/filtered?period=${period}&token=${process.env.ADMIN_TOKEN}`
+      : `${BASE_URL}/api/admin/bookings?token=${process.env.ADMIN_TOKEN}`;
+      
+    const response = await axios.get(endpoint);
+    
+    if (response.data.success) {
+      if (!response.data.bookings || response.data.bookings.length === 0) {
+        await sendMessage(chatId, `На ${titleText.toLowerCase()} нет бронирований.`);
+        return;
+      }
+      
+      const message = createAdminBookingsListMessage(response.data.bookings);
+      const fullMessage = `${titleText}\n\n${message}`;
+      
+      const maxLength = 4000;
+      if (fullMessage.length > maxLength) {
+        const parts = [];
+        for (let i = 0; i < fullMessage.length; i += maxLength) {
+          parts.push(fullMessage.substring(i, i + maxLength));
+        }
+        
+        for (let i = 0; i < parts.length; i++) {
+          const header = i === 0 ? "" : `(продолжение ${i+1}/${parts.length})\n\n`;
+          await sendMessage(chatId, `${header}${parts[i]}`, { parse_mode: 'Markdown' });
+        }
+      } else {
+        await sendMessage(chatId, fullMessage, { parse_mode: 'Markdown' });
+      }
+    } else {
+      await sendMessage(chatId, "Не удалось получить бронирования. Пожалуйста, попробуйте позже.");
+    }
+  } catch (error) {
+    console.error(`Error getting ${period || 'all'} bookings:`, error);
+    await sendMessage(chatId, "Произошла ошибка при получении бронирований.");
+  }
+}
+
+const isAdmin = (chatId) => adminChatId && chatId.toString() === adminChatId.toString();
+
+const getUserCommands = () => `🔹 *Доступные команды*:
+
+/help - показать это сообщение
+/bookings или /my - просмотреть ваши бронирования
+/cancel - отменить бронирование`;
+
+const getAdminCommands = () => `🔸 *Команды администратора*:
+
+/help - показать это сообщение
+/today - бронирования на сегодня
+/tomorrow - бронирования на завтра
+/nextweek - бронирования на неделю вперед
+/nextmonth - бронирования на месяц вперед
+/allbookings - все бронирования
+/bookings или /my - ваши личные бронирования
+/cancel - отменить бронирование`;
 
 bot.onText(/\/start (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
@@ -115,202 +260,41 @@ bot.onText(/\/start (.+)/, async (msg, match) => {
     if (!response.data.success) {
       await sendMessage(chatId, getErrorMessage(response));
     }
+
+    if (adminChatId) {
+      const userTag = username ? `@${username}` : `ID: ${chatId}`;
+      const adminMessage = `✅ Подтвержденная заявка!\n\n👤 Имя: ${booking.name}\n📞 Телефон: ${booking.phone}\n📅 Дата и время: ${formattedDate}\n🏄‍♂️ Тип: ${getActivityName(booking.type)}\n📱 Telegram: ${userTag}`;
+      await sendTelegramNotification(token, adminChatId, adminMessage);
+    }
   } catch (error) {
     await sendMessage(chatId, getErrorMessage(error));
   }
 });
 
-// Команда для просмотра бронирований пользователя
-bot.onText(/\/bookings/, async (msg) => {
-  const chatId = msg.chat.id;
-  await showUserBookings(chatId);
-});
+bot.onText(/\/bookings/, async (msg) => await showUserBookings(msg.chat.id));
+bot.onText(/\/my/, async (msg) => await showUserBookings(msg.chat.id));
 
-// Команда my - альтернативное название для /bookings (более дружелюбное)
-bot.onText(/\/my/, async (msg) => {
-  const chatId = msg.chat.id;
-  await showUserBookings(chatId);
-});
-
-// Выносим логику получения бронирований в отдельную функцию для переиспользования
-async function showUserBookings(chatId) {
-  try {
-    const response = await axios.get(`${BASE_URL}/api/user/bookings?chatId=${chatId}`);
-    
-    if (response.data.success) {
-      if (!response.data.bookings || response.data.bookings.length === 0) {
-        await sendMessage(chatId, "У вас пока нет бронирований.");
-        return;
-      }
-      
-      const bookings = response.data.bookings;
-      
-      // Создаем inline кнопки для каждого бронирования
-      const inlineKeyboard = bookings.map((booking, index) => ([
-        {
-          text: `📅 Подробнее #${index + 1}`,
-          callback_data: `details_${booking.id}`
-        },
-        {
-          text: `❌ Отменить #${index + 1}`,
-          callback_data: `cancel_${booking.id}`
-        }
-      ]));
-      
-      const message = createBookingsListMessage(bookings);
-      
-      await sendMessage(chatId, message, {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: inlineKeyboard
-        }
-      });
-    } else {
-      await sendMessage(chatId, "Не удалось получить ваши бронирования. Пожалуйста, попробуйте позже.");
-    }
-  } catch (error) {
-    console.error('Error getting user bookings:', error);
-    await sendMessage(chatId, "Произошла ошибка при получении бронирований. Пожалуйста, попробуйте позже.");
-  }
-}
-
-// Обработка нажатия на кнопки отмены и просмотра деталей бронирования
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
   const messageId = query.message.message_id;
   
-  // Обработка просмотра деталей бронирования
   if (data.startsWith('details_')) {
     const bookingId = data.replace('details_', '');
     await handleBookingDetails(chatId, bookingId, messageId);
-    return;
-  }
-  
-  // Обработка отмены бронирования
-  if (data.startsWith('cancel_')) {
+  } else if (data.startsWith('cancel_')) {
     const bookingId = data.replace('cancel_', '');
     await handleBookingCancellation(chatId, bookingId, messageId, query.id);
-    return;
-  }
-});
-
-// Функция для отображения деталей бронирования
-async function handleBookingDetails(chatId, bookingId, messageId) {
-  try {
-    const response = await axios.get(`${BASE_URL}/api/user/bookings/details?bookingId=${bookingId}&chatId=${chatId}`);
-    
-    if (response.data.success) {
-      const booking = response.data.booking;
-      const dateText = formatDateTime(booking.date, booking.time);
-      const typeText = getActivityName(booking.type);
-      
-      const detailsMessage = `📋 *Детали бронирования*\n\n` +
-                           `📅 Дата и время: ${dateText}\n` +
-                           `🏄‍♂️ Тип: ${typeText}\n` +
-                           `👤 Имя: ${booking.name}\n`;
-      
-      // Создаем кнопки для действий с этим бронированием
-      const inlineKeyboard = [
-        [
-          {
-            text: "❌ Отменить бронирование",
-            callback_data: `cancel_${booking.id}`
-          }
-        ],
-        [
-          {
-            text: "◀️ Назад к списку",
-            callback_data: `back_to_list`
-          }
-        ]
-      ];
-      
-      await bot.editMessageText(detailsMessage, {
-        chat_id: chatId,
-        message_id: messageId,
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: inlineKeyboard
-        }
-      });
-    } else {
-      await bot.answerCallbackQuery(query.id, {
-        text: "Не удалось получить детали бронирования",
-        show_alert: true
-      });
-    }
-  } catch (error) {
-    console.error('Error getting booking details:', error);
-    await sendMessage(chatId, "Произошла ошибка при получении деталей бронирования.");
-  }
-}
-
-// Функция для отмены бронирования
-async function handleBookingCancellation(chatId, bookingId, messageId, queryId = null) {
-  try {
-    // Сначала запрашиваем подтверждение
-    const confirmMessage = "Вы уверены, что хотите отменить бронирование?";
-    const confirmKeyboard = [
-      [
-        {
-          text: "✅ Да, отменить",
-          callback_data: `confirm_cancel_${bookingId}`
-        }
-      ],
-      [
-        {
-          text: "❌ Нет, оставить",
-          callback_data: `back_to_list`
-        }
-      ]
-    ];
-    
-    await bot.editMessageText(confirmMessage, {
-      chat_id: chatId,
-      message_id: messageId,
-      reply_markup: {
-        inline_keyboard: confirmKeyboard
-      }
-    });
-    
-    if (queryId) {
-      await bot.answerCallbackQuery(queryId);
-    }
-  } catch (error) {
-    console.error('Error preparing cancellation:', error);
-    if (queryId) {
-      await bot.answerCallbackQuery(queryId, {
-        text: "Произошла ошибка при подготовке отмены",
-        show_alert: true
-      });
-    }
-  }
-}
-
-// Обработка подтверждения отмены бронирования
-bot.on('callback_query', async (query) => {
-  const chatId = query.message.chat.id;
-  const data = query.data;
-  
-  // Возврат к списку бронирований
-  if (data === 'back_to_list') {
-    await bot.deleteMessage(chatId, query.message.message_id);
+  } else if (data === 'back_to_list') {
+    await bot.deleteMessage(chatId, messageId);
     await showUserBookings(chatId);
     await bot.answerCallbackQuery(query.id);
-    return;
-  }
-  
-  // Подтверждение отмены бронирования
-  if (data.startsWith('confirm_cancel_')) {
+  } else if (data.startsWith('confirm_cancel_')) {
     const bookingId = data.replace('confirm_cancel_', '');
     
     try {
       const response = await axios.delete(`${BASE_URL}/api/user/bookings`, {
-        data: { 
-          bookingId, 
-          chatId 
-        }
+        data: { bookingId, chatId }
       });
       
       if (response.data.success) {
@@ -318,24 +302,22 @@ bot.on('callback_query', async (query) => {
           text: '✅ Бронирование успешно отменено'
         });
         
-        await bot.deleteMessage(chatId, query.message.message_id);
+        await bot.deleteMessage(chatId, messageId);
         await sendMessage(chatId, "✅ Ваше бронирование было успешно отменено.");
         
-        // Если у пользователя остались другие бронирования, отправим обновленный список
         if (response.data.remainingBookings?.length > 0) {
           await showUserBookings(chatId);
         }
         
-        // Уведомляем администратора об отмене
         if (adminChatId) {
           const bookingInfo = response.data.canceledBooking;
           const dateText = formatDateTime(bookingInfo.date, bookingInfo.time);
           const typeText = getActivityName(bookingInfo.type);
+          const telegramInfo = query.from.username ? `@${query.from.username}` : `ID: ${chatId}`;
           
-          const adminMessage = `❌ Отмена бронирования!\n\n👤 Имя: ${bookingInfo.name}\n📅 Дата: ${dateText}\n🏄‍♂️ Тип: ${typeText}`;
+          const adminMessage = `❌ Отмена бронирования!\n\n👤 Имя: ${bookingInfo.name}\n📞 Телефон: ${bookingInfo.phone}\n📅 Дата и время: ${dateText}\n🏄‍♂️ Тип: ${typeText}\n📱 Telegram: ${telegramInfo}`;
           await sendMessage(adminChatId, adminMessage);
         }
-        
       } else {
         await bot.answerCallbackQuery(query.id, {
           text: '⚠️ Ошибка при отмене бронирования',
@@ -349,174 +331,28 @@ bot.on('callback_query', async (query) => {
         show_alert: true
       });
     }
-    
-    return;
   }
 });
 
-// Команды администратора для просмотра бронирований
-// Проверяем, является ли пользователь администратором
-const isAdmin = (chatId) => adminChatId && chatId.toString() === adminChatId.toString();
+const adminCommandHandlers = {
+  '/today': { period: 'today', title: '📅 *Бронирования на сегодня*' },
+  '/tomorrow': { period: 'tomorrow', title: '📅 *Бронирования на завтра*' },
+  '/nextweek': { period: 'week', title: '📅 *Бронирования на неделю вперед*' },
+  '/nextmonth': { period: 'month', title: '📅 *Бронирования на месяц вперед*' },
+  '/allbookings': { period: null, title: '📅 *Все бронирования*' }
+};
 
-// Бронирования на сегодня
-bot.onText(/\/today/, async (msg) => {
-  const chatId = msg.chat.id;
-  
-  if (!isAdmin(chatId)) {
-    await sendMessage(chatId, "Эта команда доступна только администраторам.");
-    return;
-  }
-  
-  try {
-    const response = await axios.get(`${BASE_URL}/api/admin/bookings/filtered?period=today&token=${process.env.ADMIN_TOKEN}`);
+Object.entries(adminCommandHandlers).forEach(([command, { period, title }]) => {
+  bot.onText(new RegExp(command), async (msg) => {
+    const chatId = msg.chat.id;
     
-    if (response.data.success) {
-      if (!response.data.bookings || response.data.bookings.length === 0) {
-        await sendMessage(chatId, "На сегодня нет бронирований.");
-        return;
-      }
-      
-      const message = createAdminBookingsListMessage(response.data.bookings);
-      await sendMessage(chatId, `📅 *Бронирования на сегодня*\n\n${message}`, { parse_mode: 'Markdown' });
-    } else {
-      await sendMessage(chatId, "Не удалось получить бронирования. Пожалуйста, попробуйте позже.");
+    if (!isAdmin(chatId)) {
+      await sendMessage(chatId, "Эта команда доступна только администраторам.");
+      return;
     }
-  } catch (error) {
-    console.error('Error getting today bookings:', error);
-    await sendMessage(chatId, "Произошла ошибка при получении бронирований.");
-  }
-});
-
-// Бронирования на завтра
-bot.onText(/\/tomorrow/, async (msg) => {
-  const chatId = msg.chat.id;
-  
-  if (!isAdmin(chatId)) {
-    await sendMessage(chatId, "Эта команда доступна только администраторам.");
-    return;
-  }
-  
-  try {
-    const response = await axios.get(`${BASE_URL}/api/admin/bookings/filtered?period=tomorrow&token=${process.env.ADMIN_TOKEN}`);
     
-    if (response.data.success) {
-      if (!response.data.bookings || response.data.bookings.length === 0) {
-        await sendMessage(chatId, "На завтра нет бронирований.");
-        return;
-      }
-      
-      const message = createAdminBookingsListMessage(response.data.bookings);
-      await sendMessage(chatId, `📅 *Бронирования на завтра*\n\n${message}`, { parse_mode: 'Markdown' });
-    } else {
-      await sendMessage(chatId, "Не удалось получить бронирования. Пожалуйста, попробуйте позже.");
-    }
-  } catch (error) {
-    console.error('Error getting tomorrow bookings:', error);
-    await sendMessage(chatId, "Произошла ошибка при получении бронирований.");
-  }
-});
-
-// Бронирования на неделю вперед
-bot.onText(/\/nextweek/, async (msg) => {
-  const chatId = msg.chat.id;
-  
-  if (!isAdmin(chatId)) {
-    await sendMessage(chatId, "Эта команда доступна только администраторам.");
-    return;
-  }
-  
-  try {
-    const response = await axios.get(`${BASE_URL}/api/admin/bookings/filtered?period=week&token=${process.env.ADMIN_TOKEN}`);
-    
-    if (response.data.success) {
-      if (!response.data.bookings || response.data.bookings.length === 0) {
-        await sendMessage(chatId, "На следующую неделю нет бронирований.");
-        return;
-      }
-      
-      const message = createAdminBookingsListMessage(response.data.bookings);
-      await sendMessage(chatId, `📅 *Бронирования на неделю вперед*\n\n${message}`, { parse_mode: 'Markdown' });
-    } else {
-      await sendMessage(chatId, "Не удалось получить бронирования. Пожалуйста, попробуйте позже.");
-    }
-  } catch (error) {
-    console.error('Error getting week bookings:', error);
-    await sendMessage(chatId, "Произошла ошибка при получении бронирований.");
-  }
-});
-
-// Бронирования на месяц вперед
-bot.onText(/\/nextmonth/, async (msg) => {
-  const chatId = msg.chat.id;
-  
-  if (!isAdmin(chatId)) {
-    await sendMessage(chatId, "Эта команда доступна только администраторам.");
-    return;
-  }
-  
-  try {
-    const response = await axios.get(`${BASE_URL}/api/admin/bookings/filtered?period=month&token=${process.env.ADMIN_TOKEN}`);
-    
-    if (response.data.success) {
-      if (!response.data.bookings || response.data.bookings.length === 0) {
-        await sendMessage(chatId, "На следующий месяц нет бронирований.");
-        return;
-      }
-      
-      const message = createAdminBookingsListMessage(response.data.bookings);
-      await sendMessage(chatId, `📅 *Бронирования на месяц вперед*\n\n${message}`, { parse_mode: 'Markdown' });
-    } else {
-      await sendMessage(chatId, "Не удалось получить бронирования. Пожалуйста, попробуйте позже.");
-    }
-  } catch (error) {
-    console.error('Error getting month bookings:', error);
-    await sendMessage(chatId, "Произошла ошибка при получении бронирований.");
-  }
-});
-
-// Все бронирования
-bot.onText(/\/allbookings/, async (msg) => {
-  const chatId = msg.chat.id;
-  
-  if (!isAdmin(chatId)) {
-    await sendMessage(chatId, "Эта команда доступна только администраторам.");
-    return;
-  }
-  
-  try {
-    const response = await axios.get(`${BASE_URL}/api/admin/bookings?token=${process.env.ADMIN_TOKEN}`);
-    
-    if (response.data.success) {
-      if (!response.data.bookings || response.data.bookings.length === 0) {
-        await sendMessage(chatId, "Нет активных бронирований.");
-        return;
-      }
-      
-      const message = createAdminBookingsListMessage(response.data.bookings);
-      
-      // Разбиваем на части, если сообщение слишком длинное
-      const maxLength = 4000; // Максимальная длина сообщения в Telegram
-      if (message.length > maxLength) {
-        const parts = [];
-        for (let i = 0; i < message.length; i += maxLength) {
-          parts.push(message.substring(i, i + maxLength));
-        }
-        
-        await sendMessage(chatId, `📅 *Все бронирования (часть 1/${parts.length})*\n\n${parts[0]}`, { parse_mode: 'Markdown' });
-        
-        for (let i = 1; i < parts.length; i++) {
-          await sendMessage(chatId, `📅 *Все бронирования (часть ${i+1}/${parts.length})*\n\n${parts[i]}`, { parse_mode: 'Markdown' });
-        }
-      } else {
-        await sendMessage(chatId, `📅 *Все бронирования*\n\n${message}`, { parse_mode: 'Markdown' });
-      }
-    } else {
-      await sendMessage(chatId, "Не удалось получить бронирования. Пожалуйста, попробуйте позже.");
-    }
-  } catch (error) {
-    console.error('Error getting all bookings:', error);
-    await sendMessage(chatId, "Произошла ошибка при получении бронирований.");
-  }
+    await fetchAndDisplayAdminBookings(chatId, period, title);
+  });
 });
 
 bot.onText(/^\/start$/, (msg) => {
@@ -551,90 +387,48 @@ bot.onText(/^\/start$/, (msg) => {
   
   bot.sendMessage(chatId, welcomeMessage, isAdminUser ? adminKeyboard : userKeyboard);
   
-  // Сразу после приветствия отправляем справку по командам
   setTimeout(() => {
     const commandsText = isAdminUser ? getAdminCommands() : getUserCommands();
     bot.sendMessage(chatId, commandsText, { parse_mode: 'Markdown' });
   }, 500);
 });
 
+const textCommandMap = {
+  'мои бронирования': '/bookings',
+  'помощь': '/help',
+  'отменить бронирование': '/cancel',
+  'сегодня': '/today',
+  'завтра': '/tomorrow',
+  'на неделю': '/nextweek',
+  'на месяц': '/nextmonth',
+  'все бронирования': '/allbookings'
+};
+
 bot.on('message', (msg) => {
   if (!msg.text) return;
   
   const chatId = msg.chat.id;
   const text = msg.text.toLowerCase();
+  const command = textCommandMap[text];
   
-  // Команды для всех пользователей
-  if (text === 'мои бронирования') {
-    bot.emit('text', msg, ['/bookings']);
-    return;
-  } else if (text === 'помощь') {
-    bot.emit('text', msg, ['/help']);
-    return;
-  } else if (text === 'отменить бронирование') {
-    bot.emit('text', msg, ['/cancel']);
-    return;
-  }
-  
-  // Команды только для администраторов
-  if (!isAdmin(chatId)) return;
-  
-  switch (text) {
-    case 'сегодня':
-      bot.emit('text', msg, ['/today']);
-      break;
-    case 'завтра':
-      bot.emit('text', msg, ['/tomorrow']);
-      break;
-    case 'на неделю':
-      bot.emit('text', msg, ['/nextweek']);
-      break;
-    case 'на месяц':
-      bot.emit('text', msg, ['/nextmonth']);
-      break;
-    case 'все бронирования':
-      bot.emit('text', msg, ['/allbookings']);
-      break;
+  if (command) {
+    if (command.startsWith('/today') || command.startsWith('/tomorrow') || 
+        command.startsWith('/nextweek') || command.startsWith('/nextmonth') || 
+        command.startsWith('/allbookings')) {
+      if (!isAdmin(chatId)) return;
+    }
+    
+    bot.emit('text', msg, [command]);
   }
 });
 
-// Список команд для пользователей
-const getUserCommands = () => {
-  return `🔹 *Доступные команды*:
-
-/help - показать это сообщение
-/bookings или /my - просмотреть ваши бронирования
-/cancel - отменить бронирование
-
-Используйте кнопки внизу экрана для быстрого доступа к командам.`;
-};
-
-// Список команд для администратора
-const getAdminCommands = () => {
-  return `🔸 *Команды администратора*:
-
-/help - показать это сообщение
-/today - бронирования на сегодня
-/tomorrow - бронирования на завтра
-/nextweek - бронирования на неделю вперед
-/nextmonth - бронирования на месяц вперед
-/allbookings - все бронирования
-/bookings или /my - ваши личные бронирования
-/cancel - отменить бронирование
-
-Используйте кнопки внизу экрана для быстрого доступа к командам.`;
-};
-
-// Команда help
 bot.onText(/\/help/, async (msg) => {
   const chatId = msg.chat.id;
   const isAdminUser = isAdmin(chatId);
-  
   const commandsText = isAdminUser ? getAdminCommands() : getUserCommands();
   await sendMessage(chatId, commandsText, { parse_mode: 'Markdown' });
 });
 
-// Добавляем команду отмены бронирования
 bot.onText(/\/cancel/, async (msg) => {
   const chatId = msg.chat.id;
   
@@ -643,19 +437,13 @@ bot.onText(/\/cancel/, async (msg) => {
     
     if (response.data.success && response.data.bookings && response.data.bookings.length > 0) {
       const bookings = response.data.bookings;
-      
-      // Создаем inline кнопки для каждого бронирования
-      const inlineKeyboard = bookings.map((booking, index) => ([
-        {
-          text: `❌ Отменить: ${formatDateTime(booking.date, booking.time)} - ${getActivityName(booking.type)}`,
-          callback_data: `cancel_${booking.id}`
-        }
-      ]));
+      const inlineKeyboard = bookings.map((booking, index) => ([{
+        text: `❌ Отменить: ${formatDateTime(booking.date, booking.time)} - ${getActivityName(booking.type)}`,
+        callback_data: `cancel_${booking.id}`
+      }]));
       
       await sendMessage(chatId, "Выберите бронирование для отмены:", {
-        reply_markup: {
-          inline_keyboard: inlineKeyboard
-        }
+        reply_markup: { inline_keyboard: inlineKeyboard }
       });
     } else {
       await sendMessage(chatId, "У вас нет активных бронирований, которые можно отменить.");
@@ -666,30 +454,28 @@ bot.onText(/\/cancel/, async (msg) => {
   }
 });
 
-// Регистрируем команды в Telegram
-bot.setMyCommands([
+const standardCommands = [
   { command: 'start', description: 'Начать работу с ботом' },
   { command: 'help', description: 'Показать список команд' },
   { command: 'bookings', description: 'Посмотреть мои бронирования' },
   { command: 'my', description: 'Посмотреть мои бронирования' },
   { command: 'cancel', description: 'Отменить бронирование' }
-]);
+];
 
-// Дополнительные команды для администраторов устанавливаем отдельно
+const adminCommands = [
+  ...standardCommands,
+  { command: 'today', description: 'Бронирования на сегодня' },
+  { command: 'tomorrow', description: 'Бронирования на завтра' },
+  { command: 'nextweek', description: 'Бронирования на неделю' },
+  { command: 'nextmonth', description: 'Бронирования на месяц' },
+  { command: 'allbookings', description: 'Все бронирования' }
+];
+
+bot.setMyCommands(standardCommands);
+
 if (adminChatId) {
   try {
-    bot.setMyCommands([
-      { command: 'start', description: 'Начать работу с ботом' },
-      { command: 'help', description: 'Показать список команд' },
-      { command: 'bookings', description: 'Посмотреть мои бронирования' },
-      { command: 'my', description: 'Посмотреть мои бронирования' },
-      { command: 'cancel', description: 'Отменить бронирование' },
-      { command: 'today', description: 'Бронирования на сегодня' },
-      { command: 'tomorrow', description: 'Бронирования на завтра' },
-      { command: 'nextweek', description: 'Бронирования на неделю' },
-      { command: 'nextmonth', description: 'Бронирования на месяц' },
-      { command: 'allbookings', description: 'Все бронирования' }
-    ], { scope: { chat_id: adminChatId } });
+    bot.setMyCommands(adminCommands, { scope: { chat_id: adminChatId } });
   } catch (error) {
     console.error('Error setting admin commands:', error);
   }

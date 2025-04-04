@@ -10,11 +10,10 @@ export async function GET(request: Request) {
       return errorResponse('Доступ запрещен', 403);
     }
     
-    // Получаем все бронирования, сортируем по дате (ближайшие сначала)
     const { data: bookings, error } = await supabase
       .from('bookings')
       .select('id, name, phone, date, time, type, confirmed, telegram_username, created_at')
-      .order('date', { ascending: true }); // Меняем сортировку на по возрастанию (ближайшие сначала)
+      .order('date', { ascending: true });
     
     if (error) {
       console.error('Error fetching admin bookings:', error);

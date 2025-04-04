@@ -11,7 +11,6 @@ export async function GET(request: Request) {
       return errorResponse('Недостаточно данных', 400);
     }
     
-    // Получаем данные о бронировании
     const { data: booking, error } = await supabase
       .from('bookings')
       .select('*')
@@ -22,7 +21,6 @@ export async function GET(request: Request) {
       return errorResponse('Бронирование не найдено', 404);
     }
     
-    // Проверяем, что бронирование принадлежит этому пользователю
     if (booking.user_chat_id !== chatId.toString()) {
       return errorResponse('Нет прав на просмотр этого бронирования', 403);
     }

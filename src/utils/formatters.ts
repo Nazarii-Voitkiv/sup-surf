@@ -29,8 +29,15 @@ export function formatTimeRemaining(seconds: number) {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
-// Добавим функцию для расчета оставшегося времени
 export function calculateTimeRemaining(expiryDate: Date): number {
   const now = new Date();
   return Math.max(0, Math.floor((expiryDate.getTime() - now.getTime()) / 1000));
+}
+
+export function sortBookingsByDate(bookings: any[]) {
+  return [...bookings].sort((a, b) => {
+    const dateA = new Date(`${a.date}T${a.time || '00:00'}`);
+    const dateB = new Date(`${b.date}T${b.time || '00:00'}`);
+    return dateA - dateB;
+  });
 }
