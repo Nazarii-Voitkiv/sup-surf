@@ -1,51 +1,81 @@
-import { NextResponse } from 'next/server';
 import { FormData } from '@/types';
 import { generateConfirmationId } from '@/utils/bookingUtils';
+import supabase from '@/lib/supabase';
+import { errorResponse, successResponse, sendTelegramNotification } from '@/utils/api';
+import { formatDateTime, getActivityTypeText } from '@/utils/formatters';
 
-const pendingBookings = new Map();
+const CONFIRMATION_TIMEOUT_MINUTES = parseInt(process.env.CONFIRMATION_TIMEOUT_MINUTES || '3', 10);
 
 export async function POST(request: Request) {
   try {
     const data: FormData = await request.json();
     
-    if (!data.name || !data.date || !data.type || !data.phone) {
-      return NextResponse.json({ success: false, message: 'Не заполнены обязательные поля' }, { status: 400 });
+    if (!data.name || !data.date || !data.time || !data.type || !data.phone) {
+      return errorResponse('Не заполнены обязательные поля', 400);
     }
     
     const botUsername = process.env.TELEGRAM_BOT_USERNAME;
     if (!botUsername) {
-      return NextResponse.json({ success: false, message: 'Ошибка конфигурации сервера' }, { status: 500 });
+      return errorResponse('Ошибка конфигурации сервера');
     }
     
     const confirmationId = generateConfirmationId();
-    pendingBookings.set(confirmationId, {
-      ...data,
-      createdAt: new Date().toISOString(),
-      confirmed: false
-    });
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + CONFIRMATION_TIMEOUT_MINUTES * 60000);
     
-    return NextResponse.json({ 
-      success: true, 
+    const { error } = await supabase
+      .from('bookings')
+      .insert({
+        name: data.name,
+        phone: data.phone,
+        date: new Date(data.date).toISOString().split('T')[0],
+        time: data.time,
+        type: data.type,
+        created_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        confirmed: false,
+        confirmation_id: confirmationId
+      });
+
+    if (error) {
+      console.error('Error creating booking:', error);
+      return errorResponse('Ошибка сохранения данных');
+    }
+    
+    return successResponse({ 
       confirmationId, 
+      expiresAt: expiresAt.toISOString(),
       confirmationLink: `https://t.me/${botUsername}?start=${confirmationId}` 
     });
   } catch (error) {
-    return NextResponse.json({ success: false, message: 'Не удалось обработать запрос' }, { status: 500 });
+    console.error('Error creating booking:', error);
+    return errorResponse('Не удалось обработать запрос');
   }
 }
 
 export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const id = url.searchParams.get('id');
-  
-  if (!id || !pendingBookings.has(id)) {
-    return NextResponse.json({ success: false, message: 'Бронь не найдена' }, { status: 404 });
+  try {
+    const id = new URL(request.url).searchParams.get('id');
+    
+    if (!id) {
+      return errorResponse('ID не указан', 400);
+    }
+    
+    const { data: booking, error } = await supabase
+      .from('bookings')
+      .select('name, date, time, type, confirmed')
+      .eq('confirmation_id', id)
+      .single();
+    
+    if (error || !booking) {
+      return errorResponse('Бронь не найдена', 404);
+    }
+    
+    return successResponse({ confirmed: booking.confirmed, booking });
+  } catch (error) {
+    console.error('Error getting booking:', error);
+    return errorResponse('Ошибка сервера');
   }
-  
-  return NextResponse.json({ 
-    success: true, 
-    confirmed: pendingBookings.get(id).confirmed 
-  });
 }
 
 export async function PUT(request: Request) {
@@ -54,48 +84,62 @@ export async function PUT(request: Request) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const adminChatId = process.env.ADMIN_CHAT_ID;
     
-    if (!token || !pendingBookings.has(confirmationId)) {
-      return NextResponse.json({ 
-        success: false, 
-        message: !token ? 'Ошибка конфигурации сервера' : 'Бронь не найдена'
-      }, { status: !token ? 500 : 404 });
+    if (!token) {
+      return errorResponse('Ошибка конфигурации сервера');
     }
     
-    const booking = pendingBookings.get(confirmationId);
-    booking.confirmed = true;
-    booking.userChatId = chatId;
-    booking.telegramUsername = username;
+    const { data: booking, error: fetchError } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('confirmation_id', confirmationId)
+      .single();
     
-    const formattedDate = new Date(booking.date).toLocaleDateString('ru-RU', {
-      day: 'numeric', month: 'long', year: 'numeric'
-    });
-    const activityType = booking.type === 'sup' ? 'SUP-прогулку' : 'Серфинг';
+    if (fetchError || !booking) {
+      return errorResponse('Бронь не найдена', 404);
+    }
+    
+    if (booking.confirmed) {
+      return errorResponse('Эта заявка уже подтверждена', 400);
+    }
+    
+    const now = new Date();
+    const expiresAt = new Date(booking.expires_at);
+    
+    if (now > expiresAt) {
+      return errorResponse('Время подтверждения истекло', 400);
+    }
+    
+    const { error: updateError } = await supabase
+      .from('bookings')
+      .update({
+        confirmed: true,
+        user_chat_id: chatId,
+        telegram_username: username
+      })
+      .eq('confirmation_id', confirmationId);
+    
+    if (updateError) {
+      console.error('Error updating booking:', updateError);
+      return errorResponse('Ошибка обновления данных');
+    }
+    
+    const formattedDate = formatDateTime(booking.date, booking.time);
+    const activityType = getActivityTypeText(booking.type);
     
     if (chatId) {
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          chat_id: chatId, 
-          text: `✅ Спасибо за подтверждение заявки!\n\n👤 Имя: ${booking.name}\n📅 Дата: ${formattedDate}\n🏄‍♂️ Тип: ${activityType}\n\nМы свяжемся с вами в ближайшее время 🌊` 
-        })
-      });
+      const userMessage = `✅ Спасибо за подтверждение заявки!\n\n👤 Имя: ${booking.name}\n📅 Дата и время: ${formattedDate}\n🏄‍♂️ Тип: ${activityType}\n\nМы свяжемся с вами в ближайшее время 🌊`;
+      await sendTelegramNotification(token, chatId, userMessage);
     }
     
     if (adminChatId) {
       const userTag = username ? `@${username}` : `ID: ${chatId}`;
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          chat_id: adminChatId, 
-          text: `✅ Подтвержденная заявка!\n\n👤 Имя: ${booking.name}\n📞 Телефон: ${booking.phone}\n📅 Дата: ${formattedDate}\n🏄‍♂️ Тип: ${activityType}\n📱 Telegram: ${userTag}` 
-        })
-      });
+      const adminMessage = `✅ Подтвержденная заявка!\n\n👤 Имя: ${booking.name}\n📞 Телефон: ${booking.phone}\n📅 Дата и время: ${formattedDate}\n🏄‍♂️ Тип: ${activityType}\n📱 Telegram: ${userTag}`;
+      await sendTelegramNotification(token, adminChatId, adminMessage);
     }
     
-    return NextResponse.json({ success: true });
+    return successResponse({});
   } catch (error) {
-    return NextResponse.json({ success: false, message: 'Не удалось обработать запрос' }, { status: 500 });
+    console.error('Error updating booking:', error);
+    return errorResponse('Не удалось обработать запрос');
   }
 }

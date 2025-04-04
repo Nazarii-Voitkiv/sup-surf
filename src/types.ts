@@ -1,6 +1,7 @@
 export interface FormData {
   name: string;
   date: string;
+  time: string;  // Added time field
   type: string;
   phone: string;
   confirmationId?: string;

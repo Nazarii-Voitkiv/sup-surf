@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, ChangeEvent, FormEvent } from "react";
+import { useState, ChangeEvent, FormEvent, useEffect, useRef } from "react";
 import Image from "next/image";
 import { TourCard } from "../components/TourCard";
 import { FormInput } from "../components/FormInput";
@@ -18,6 +18,7 @@ export default function Home() {
     name: "",
     phone: "",
     date: "",
+    time: "",  // Added time field with empty default
     type: ""
   });
   
@@ -25,11 +26,15 @@ export default function Home() {
     name: false,
     phone: false,
     date: false,
+    time: false,  // Added time field validation
     type: false
   });
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isScrolled = useScrollPosition();
+  const [confirmationExpiry, setConfirmationExpiry] = useState<Date | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState<number>(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
   
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -47,6 +52,55 @@ export default function Home() {
     }
   };
   
+  const updateTimer = () => {
+    if (!confirmationExpiry) return;
+    
+    const now = new Date();
+    const expiryTime = new Date(confirmationExpiry);
+    const diff = Math.max(0, Math.floor((expiryTime.getTime() - now.getTime()) / 1000));
+    
+    setTimeRemaining(diff);
+    
+    if (diff === 0 && timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+  
+  useEffect(() => {
+    if (confirmationExpiry && timeRemaining > 0) {
+      timerRef.current = setInterval(updateTimer, 1000);
+      return () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+      };
+    }
+  }, [confirmationExpiry]);
+  
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const resetConfirmationState = () => {
+    setConfirmationLink('');
+    setConfirmationExpiry(null);
+    setTimeRemaining(0);
+    
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+  
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
+  
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     
@@ -54,6 +108,7 @@ export default function Home() {
       name: !formData.name,
       phone: !formData.phone,
       date: !formData.date,
+      time: !formData.time,  // Added time validation
       type: !formData.type
     };
     
@@ -63,6 +118,8 @@ export default function Home() {
       setIsSubmitting(true);
       
       try {
+        resetConfirmationState();
+        
         const confirmId = generateConfirmationId();
         const dataWithConfirmation = {
           ...formData,
@@ -84,10 +141,24 @@ export default function Home() {
         setConfirmationLink(result.confirmationLink);
         setBookingState('confirm');
         
+        if (result.expiresAt) {
+          const expiryDate = new Date(result.expiresAt);
+          setConfirmationExpiry(expiryDate);
+          
+          const now = new Date();
+          const diffSeconds = Math.max(0, Math.floor((expiryDate.getTime() - now.getTime()) / 1000));
+          setTimeRemaining(diffSeconds);
+          
+          if (diffSeconds > 0) {
+            updateTimer();
+          }
+        }
+        
         setFormData({
           name: "",
           phone: "",
           date: "",
+          time: "",
           type: ""
         });
       } catch (error) {
@@ -134,6 +205,15 @@ export default function Home() {
       />
       
       <FormInput
+        type="time"
+        name="time"
+        value={formData.time}
+        onChange={handleInputChange}
+        label="Время прогулки"
+        error={formErrors.time}
+      />
+      
+      <FormInput
         type="select"
         name="type"
         value={formData.type}
@@ -173,16 +253,37 @@ export default function Home() {
       <div className="mb-6">
         <CheckIcon className="h-16 w-16 text-primary mx-auto mb-4" />
         <h3 className="text-2xl font-bold mb-3">Остался последний шаг!</h3>
-        <p className="text-lg text-gray-700 mb-6">
+        <p className="text-lg text-gray-700 mb-4">
           Чтобы завершить бронирование, пожалуйста, подтвердите заявку в нашем Telegram боте.
         </p>
+        
+        {timeRemaining > 0 && (
+          <div className="mb-4">
+            <p className="text-gray-600 mb-1">Время на подтверждение:</p>
+            <div className="text-xl font-mono bg-gray-100 inline-block px-4 py-2 rounded-lg font-bold text-primary">
+              {formatTime(timeRemaining)}
+            </div>
+            <p className="text-sm text-gray-500 mt-1">
+              Ссылка будет действительна в течение 3 минут
+            </p>
+          </div>
+        )}
+        
+        {timeRemaining === 0 && confirmationExpiry && (
+          <div className="bg-red-50 text-red-800 p-3 rounded-lg mb-4">
+            <p className="font-bold">Время истекло!</p>
+            <p>Пожалуйста, заполните форму заново для создания новой заявки</p>
+          </div>
+        )}
       </div>
       
       <a 
         href={confirmationLink}
         target="_blank"
         rel="noopener noreferrer"
-        className="btn-primary inline-flex items-center justify-center mb-6 px-6 py-3"
+        className={`btn-primary inline-flex items-center justify-center mb-6 px-6 py-3 
+          ${timeRemaining === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+        onClick={(e) => timeRemaining === 0 && e.preventDefault()}
       >
         <svg className="w-5 h-5 mr-2" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
           <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm.14 19.018c-.798 0-1.612-.13-2.432-.404a9.044 9.044 0 01-2.1-.923 7.88 7.88 0 01-1.57-1.184 7.88 7.88 0 01-1.184-1.57 9.044 9.044 0 01-.923-2.1c-.274-.82-.404-1.634-.404-2.431 0-.798.13-1.612.404-2.432a9.044 9.044 0 01.923-2.1 7.88 7.88 0 011.184-1.57 7.88 7.88 0 011.57-1.184 9.044 9.044 0 012.1-.923c.82-.274 1.634-.404 2.432-.404.798 0 1.612.13 2.432.404a9.044 9.044 0 012.1.923c.576.365 1.104.795 1.57 1.184s.82.994 1.184 1.57c.478.646.733 1.325.923 2.1.274.82.404 1.634.404 2.432 0 .798-.13 1.613-.404 2.432a9.044 9.044 0 01-.923 2.099 7.88 7.88 0 01-1.184 1.57 7.88 7.88 0 01-1.57 1.184 9.044 9.044 0 01-2.1.923c-.82.274-1.634.404-2.432.404zM9.85 8.262L7.17 9.195c-.086.042-.086.13 0 .172l6.317 2.383c.043.022.108 0 .13-.043l2.426-6.316c.022-.086-.022-.173-.13-.151l-6.062 2.383c-.022 0-.022.022-.022.022L9.85 8.262z"/>
@@ -195,7 +296,10 @@ export default function Home() {
       </p>
       
       <button 
-        onClick={() => setBookingState('form')}
+        onClick={() => {
+          resetConfirmationState();
+          setBookingState('form');
+        }}
         className="text-primary hover:underline"
       >
         Вернуться к форме

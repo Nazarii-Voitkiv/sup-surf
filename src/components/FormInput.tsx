@@ -1,7 +1,7 @@
 import { ChangeEvent } from 'react';
 
 interface FormInputProps {
-  type: 'text' | 'date' | 'select';
+  type: 'text' | 'date' | 'time' | 'select';  // Added 'time' type
   name: string;
   value: string;
   onChange: (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
